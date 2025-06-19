@@ -26,7 +26,7 @@
 [cratesio-url]: https://crates.io/crates/utsuru
 [depsrs-image]: https://deps.rs/repo/github/VincentVerdynanta/utsuru/status.svg
 [depsrs-url]: https://deps.rs/repo/github/VincentVerdynanta/utsuru
-[discord-image]: https://img.shields.io/discord/1381377249923567707?logo=discord
+[discord-image]: https://img.shields.io/discord/1162823780708651018?logo=discord
 [discord-url]: https://discord.gg/An5jjhNUE3
 [webui-image]: https://github.com/user-attachments/assets/8bc95337-8353-4188-b2a6-8af08166ff70
 
