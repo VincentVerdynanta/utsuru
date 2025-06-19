@@ -27,7 +27,7 @@
 [depsrs-image]: https://deps.rs/repo/github/VincentVerdynanta/utsuru/status.svg
 [depsrs-url]: https://deps.rs/repo/github/VincentVerdynanta/utsuru
 [discord-image]: https://img.shields.io/discord/1381377249923567707?logo=discord
-[discord-url]: https://discord.gg/PcdC8Jk8ef
+[discord-url]: https://discord.gg/An5jjhNUE3
 [webui-image]: https://github.com/user-attachments/assets/8bc95337-8353-4188-b2a6-8af08166ff70
 
 ## Overview
@@ -107,7 +107,7 @@ See [`docs/getting-started.md`][getting-started] for basic usage.
 Thanks for your involvement in developing this project! We are so happy to
 have you! To get started, don't hesitate to check our
 
-* **[Discord][discord-url]:** utsuru's official Discord server.
+* **[Discord][discord-url]:** Real-time Broadcast Discord server.
 
 ### Code of Conduct
 
