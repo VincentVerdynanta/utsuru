@@ -274,73 +274,13 @@ impl DiscordLiveBuilder {
         egress_tx.send(payload.to_string())?;
         debug!("[WebRTC] offer sent, waiting for answer");
 
-        let payload = json!({
-            "op": 5,
-            "d": {
-                "speaking": 1,
-                "delay": 5,
-                "ssrc": 0
-            }
-        });
-        egress_tx.send(payload.to_string())?;
-
-        let payload = json!({
-            "op": 12,
-            "d": {
-                "audio_ssrc": audio_ssrc,
-                "video_ssrc": video_ssrc,
-                "rtx_ssrc": 0,
-                "streams": [{
-                    "type": "video",
-                    "rid": "100",
-                    "ssrc": video_ssrc,
-                    "active": true,
-                    "quality": 100,
-                    "rtx_ssrc": 0,
-                    "max_bitrate": 3500000,
-                    "max_framerate": 30,
-                    "max_resolution": {
-                        "type": "fixed",
-                        "width": 1280,
-                        "height": 720
-                    }
-                }]
-            }
-        });
-        let active = payload.to_string();
-        let payload = json!({
-            "op": 12,
-            "d": {
-                "audio_ssrc": 0,
-                "video_ssrc": streams[0].ssrc,
-                "rtx_ssrc": streams[0].rtx_ssrc,
-                "streams": [{
-                    "type": "video",
-                    "rid": "100",
-                    "ssrc": streams[0].ssrc,
-                    "active": false,
-                    "quality": 100,
-                    "rtx_ssrc": streams[0].rtx_ssrc,
-                    "max_bitrate": 3500000,
-                    "max_framerate": 30,
-                    "max_resolution": {
-                        "type": "fixed",
-                        "width": 1280,
-                        "height": 720
-                    }
-                }]
-            }
-        });
-        let inactive = payload.to_string();
-        egress_tx.send(inactive)?;
-
-        let mut answer = RTCSessionDescription::default();
-        answer.sdp_type = RTCSdpType::Answer;
-
         trace_tx
             .as_ref()
             .map(|tx| tx.send(DiscordLiveBuilderState::EndpointWSSDP));
         let remote_sdp = remote_rx.await?;
+
+        let mut answer = RTCSessionDescription::default();
+        answer.sdp_type = RTCSdpType::Answer;
         let remote_sdp = remote_sdp
             .replace("ICE/SDP", &format!("UDP/TLS/RTP/SAVPF {audio_payload}"))
             .replace("\n", "\r\n");
@@ -430,6 +370,67 @@ impl DiscordLiveBuilder {
 
         let local_audio_track = Arc::new(RwLock::new(local_audio_track));
         let local_video_track = Arc::new(RwLock::new(local_video_track));
+
+        let payload = json!({
+            "op": 5,
+            "d": {
+                "speaking": 1,
+                "delay": 5,
+                "ssrc": 0
+            }
+        });
+        egress_tx.send(payload.to_string())?;
+
+        let payload = json!({
+            "op": 12,
+            "d": {
+                "audio_ssrc": audio_ssrc,
+                "video_ssrc": video_ssrc,
+                "rtx_ssrc": 0,
+                "streams": [{
+                    "type": "video",
+                    "rid": "100",
+                    "ssrc": video_ssrc,
+                    "active": true,
+                    "quality": 100,
+                    "rtx_ssrc": 0,
+                    "max_bitrate": 3500000,
+                    "max_framerate": 30,
+                    "max_resolution": {
+                        "type": "fixed",
+                        "width": 1280,
+                        "height": 720
+                    }
+                }]
+            }
+        });
+        let active = payload.to_string();
+        let payload = json!({
+            "op": 12,
+            "d": {
+                "audio_ssrc": 0,
+                "video_ssrc": streams[0].ssrc,
+                "rtx_ssrc": streams[0].rtx_ssrc,
+                "streams": [{
+                    "type": "video",
+                    "rid": "100",
+                    "ssrc": streams[0].ssrc,
+                    "active": false,
+                    "quality": 100,
+                    "rtx_ssrc": streams[0].rtx_ssrc,
+                    "max_bitrate": 3500000,
+                    "max_framerate": 30,
+                    "max_resolution": {
+                        "type": "fixed",
+                        "width": 1280,
+                        "height": 720
+                    }
+                }]
+            }
+        });
+        let inactive = payload.to_string();
+        egress_tx.send(inactive)?;
+
         let audio_lock = local_audio_track.clone();
         let video_lock = local_video_track.clone();
         tokio::spawn(async move {
