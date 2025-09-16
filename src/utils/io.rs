@@ -44,14 +44,15 @@ impl<T: Depacketizer> SampleBuilder<T> {
     }
 
     pub fn push(&mut self, p: Packet) -> bool {
-        if let Some(last) = self.last_emitted {
-            if p.header.sequence_number <= last && self.hold_back > 0 {
-                trace!(
-                    "Drop before emitted: {} <= {}",
-                    p.header.sequence_number, last
-                );
-                return false;
-            }
+        if let Some(last) = self.last_emitted
+            && p.header.sequence_number <= last
+            && self.hold_back > 0
+        {
+            trace!(
+                "Drop before emitted: {} <= {}",
+                p.header.sequence_number, last
+            );
+            return false;
         }
 
         match self
@@ -142,11 +143,11 @@ impl<T: Depacketizer> SampleBuilder<T> {
         stop: usize,
         _seq: u16,
     ) -> Result<(u32, Vec<u8>), webrtc::rtp::Error> {
-        if let Some(cached) = self.depack_cache.take() {
-            if cached.0 == (start..stop) {
-                trace!("depack cache hit for segment start {}", start);
-                return Ok(cached.1);
-            }
+        if let Some(cached) = self.depack_cache.take()
+            && cached.0 == (start..stop)
+        {
+            trace!("depack cache hit for segment start {}", start);
+            return Ok(cached.1);
         }
 
         let timestamp = self
