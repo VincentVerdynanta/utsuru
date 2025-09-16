@@ -95,6 +95,7 @@ impl DiscordLiveBuilder {
         let video_rtxpayload = 103;
         let mut video_mid: u8 = 1;
         let mut video_ssrc: u32 = 0;
+        let mut video_rtxssrc: u32 = 0;
 
         let notify = Arc::new(Notifier::new());
 
@@ -197,33 +198,42 @@ impl DiscordLiveBuilder {
                             attributes.insert(format!("a={}", attribute.key));
                         }
                     }
-                    "ssrc" => match media.media_name.media.as_str() {
-                        "audio" => {
-                            if let Some(value) = attribute.value {
-                                audio_ssrc = value
-                                    .split_whitespace()
-                                    .next()
-                                    .ok_or(Error {
-                                        kind: ErrorType::DiscordEndpoint,
-                                        source: None,
-                                    })?
-                                    .parse()?;
-                            }
+                    "ssrc" => {
+                        if media.media_name.media.as_str() == "audio"
+                            && let Some(value) = attribute.value
+                        {
+                            let mut value = value.split_whitespace();
+                            audio_ssrc = value
+                                .next()
+                                .ok_or(Error {
+                                    kind: ErrorType::DiscordEndpoint,
+                                    source: None,
+                                })?
+                                .parse()?;
                         }
-                        "video" => {
-                            if let Some(value) = attribute.value {
-                                video_ssrc = value
-                                    .split_whitespace()
-                                    .next()
-                                    .ok_or(Error {
-                                        kind: ErrorType::DiscordEndpoint,
-                                        source: None,
-                                    })?
-                                    .parse()?;
-                            }
+                    }
+                    "ssrc-group" => {
+                        if media.media_name.media.as_str() == "video"
+                            && let Some(value) = attribute.value
+                        {
+                            let mut value = value.split_whitespace();
+                            let _ = value.next();
+                            video_ssrc = value
+                                .next()
+                                .ok_or(Error {
+                                    kind: ErrorType::DiscordEndpoint,
+                                    source: None,
+                                })?
+                                .parse()?;
+                            video_rtxssrc = value
+                                .next()
+                                .ok_or(Error {
+                                    kind: ErrorType::DiscordEndpoint,
+                                    source: None,
+                                })?
+                                .parse()?;
                         }
-                        _ => {}
-                    },
+                    }
                     "mid" => match media.media_name.media.as_str() {
                         "audio" => {
                             if let Some(value) = attribute.value {
@@ -386,14 +396,14 @@ impl DiscordLiveBuilder {
             "d": {
                 "audio_ssrc": audio_ssrc,
                 "video_ssrc": video_ssrc,
-                "rtx_ssrc": 0,
+                "rtx_ssrc": video_rtxssrc,
                 "streams": [{
                     "type": "video",
                     "rid": "100",
                     "ssrc": video_ssrc,
                     "active": true,
                     "quality": 100,
-                    "rtx_ssrc": 0,
+                    "rtx_ssrc": video_rtxssrc,
                     "max_bitrate": 3500000,
                     "max_framerate": 30,
                     "max_resolution": {

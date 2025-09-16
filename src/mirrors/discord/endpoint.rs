@@ -291,6 +291,7 @@ async fn init_feed(
     let password = generate_crypto_random_string(24, runes);
     let mut s = SettingEngine::default();
     s.set_ice_credentials(username_fragment, password);
+    s.enable_sender_rtx(true);
 
     let api = APIBuilder::new()
         .with_media_engine(m)
