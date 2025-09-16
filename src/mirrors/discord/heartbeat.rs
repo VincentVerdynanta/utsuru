@@ -54,10 +54,10 @@ pub async fn handle(
             }
 
             let Some(received_nonce) = item else {
-                return Ok(());
+                break;
             };
             if nonce != received_nonce {
-                return Ok(());
+                break;
             }
 
             is_first = false;
