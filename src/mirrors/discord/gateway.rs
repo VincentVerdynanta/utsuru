@@ -147,13 +147,9 @@ pub async fn handle(
                                 }
                             }
                             DispatchEvent::ServerUpdate {
-                                token,
-                                mut endpoint,
-                                ..
+                                token, endpoint, ..
                             } => {
                                 if let Some(wsconn_tx) = wsconn_tx.take() {
-                                    let len = endpoint.len();
-                                    endpoint.truncate(len - 4);
                                     let _ = wsconn_tx.send((token, endpoint));
                                 }
                             }
