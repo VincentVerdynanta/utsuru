@@ -17,7 +17,7 @@
 - [Join us](#join-us)
 - [License](#license)
 
-[icon-image]: https://github.com/user-attachments/assets/e0e13ed6-0b14-42b2-a5b9-25a369d0cd1d
+[icon-image]: https://github.com/user-attachments/assets/980db541-7063-4517-b4df-df2827b4d90e
 [license-image]: https://img.shields.io/badge/License-MIT-yellow.svg
 [license-url]: https://opensource.org/licenses/MIT
 [ci-image]: https://github.com/VincentVerdynanta/utsuru/workflows/CI/badge.svg
@@ -28,7 +28,7 @@
 [depsrs-url]: https://deps.rs/repo/github/VincentVerdynanta/utsuru
 [discord-image]: https://img.shields.io/discord/1162823780708651018?logo=discord
 [discord-url]: https://discord.gg/An5jjhNUE3
-[webui-image]: https://github.com/user-attachments/assets/8bc95337-8353-4188-b2a6-8af08166ff70
+[webui-image]: https://github.com/user-attachments/assets/4a794c87-5098-4e0e-89c1-95514d2f8475
 
 ## Overview
 
