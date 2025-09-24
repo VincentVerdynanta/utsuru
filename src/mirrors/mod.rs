@@ -10,12 +10,12 @@ pub use discord::DiscordLiveBuilder;
 pub trait Mirror {
     fn write_audio_sample<'a>(
         &'a self,
-        payload: &'a Sample,
+        payload: &'a mut Sample,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>>;
 
     fn write_video_sample<'a>(
         &'a self,
-        payload: &'a Sample,
+        payload: &'a mut Sample,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>>;
 
     fn call_connected_callback(&self) -> Result<(), Error> {

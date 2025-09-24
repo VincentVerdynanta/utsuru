@@ -31,6 +31,7 @@ where
             ErrorType::DiscordIPC => f.write_str("discord client crashed"),
             ErrorType::DiscordGateway => f.write_str("discord gateway closed"),
             ErrorType::DiscordEndpoint => f.write_str("discord endpoint closed"),
+            ErrorType::DiscordDAVE => f.write_str("discord dave closed"),
             ErrorType::WHIPIPC => f.write_str("whip service crashed"),
             ErrorType::WHIPPeer => f.write_str("whip rtc peer closed"),
         }
@@ -51,6 +52,7 @@ pub enum ErrorType {
     DiscordIPC,
     DiscordGateway,
     DiscordEndpoint,
+    DiscordDAVE,
     WHIPIPC,
     WHIPPeer,
 }

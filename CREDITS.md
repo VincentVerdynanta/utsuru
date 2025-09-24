@@ -15,6 +15,15 @@ third-party works relevant to this project.
     Source: https://github.com/webrtc-rs/webrtc/blob/master/rtp/src/codecs/h264/mod.rs
   * Copyright © 2022 Martin Algesten, licensed under the standard MIT terms  
     Source: https://github.com/algesten/str0m/blob/main/src/packet/h264.rs
+* **The implementation of BitReader and BitWriter (src/utils/bitstream.rs)**
+  * Copyright © 2022 The ChromiumOS Authors, licensed under the BSD 3-Clause terms  
+    Source: https://github.com/chromeos/cros-codecs/blob/main/src/bitstream_utils.rs
+* **The implementation of H264 Sps parser (src/utils/h264_parser.rs)**
+  * Copyright © 2022 The ChromiumOS Authors, licensed under the BSD 3-Clause terms  
+    Source: https://github.com/chromeos/cros-codecs/blob/main/src/codec/h264/parser.rs
+* **The implementation of H264 Sps synthesizer (src/utils/h264_synthesizer.rs)**
+  * Copyright © 2022 The ChromiumOS Authors, licensed under the BSD 3-Clause terms  
+    Source: https://github.com/chromeos/cros-codecs/blob/main/src/codec/h264/synthesizer.rs
 
 ## Inspiration
 

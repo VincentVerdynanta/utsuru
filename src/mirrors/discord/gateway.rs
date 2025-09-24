@@ -13,7 +13,10 @@ use tracing::{debug, warn};
 use twilight_gateway::{
     CloseFrame, Event, EventTypeFlags, Message, Shard, StreamExt as _, error::ChannelError,
 };
-use twilight_model::gateway::payload::outgoing::UpdateVoiceState;
+use twilight_model::{
+    gateway::payload::outgoing::UpdateVoiceState,
+    id::{Id, marker::UserMarker},
+};
 
 use super::{DiscordLiveBuilder, Notifier};
 use crate::error::{Error, ErrorType};
@@ -22,8 +25,8 @@ pub async fn handle(
     notify: &Arc<Notifier>,
     dc: DiscordLiveBuilder,
     mut shard: Shard,
-    mut voice_tx: Option<oneshot::Sender<(String, String)>>,
-    mut rtcsrv_tx: Option<oneshot::Sender<String>>,
+    mut voice_tx: Option<oneshot::Sender<(Id<UserMarker>, String)>>,
+    mut rtcsrv_tx: Option<oneshot::Sender<(String, String)>>,
     mut wsconn_tx: Option<oneshot::Sender<(String, String)>>,
 ) -> Result<JoinHandle<Result<(), Error<dyn ErrorInner>>>, Error<dyn ErrorInner>> {
     let sender = shard.sender();
@@ -82,8 +85,7 @@ pub async fn handle(
                         Event::GatewayClose(_) => break,
                         Event::VoiceStateUpdate(data) => {
                             if let Some(voice_tx) = voice_tx.take() {
-                                let _ = voice_tx
-                                    .send((data.user_id.to_string(), data.session_id.clone()));
+                                let _ = voice_tx.send((data.user_id, data.session_id.clone()));
 
                                 let payload = json!({
                                     "op": 18,
@@ -129,7 +131,7 @@ pub async fn handle(
                             code: 4004 | 4009..=4014,
                             ..
                         }))) => break,
-                        Ok(Message::Close(_)) => break,
+                        Ok(Message::Close(None)) => break,
                         Ok(Message::Text(text)) => text,
                         _ => continue,
                     };
@@ -141,9 +143,13 @@ pub async fn handle(
 
                     if let GatewayEvent::OpCode0(Dispatch { event, .. }) = payload {
                         match event {
-                            DispatchEvent::Create { rtc_server_id, .. } => {
+                            DispatchEvent::Create {
+                                rtc_server_id,
+                                rtc_channel_id,
+                                ..
+                            } => {
                                 if let Some(rtcsrv_tx) = rtcsrv_tx.take() {
-                                    let _ = rtcsrv_tx.send(rtc_server_id);
+                                    let _ = rtcsrv_tx.send((rtc_server_id, rtc_channel_id));
                                 }
                             }
                             DispatchEvent::ServerUpdate {
@@ -221,6 +227,7 @@ enum DispatchEvent {
         #[allow(dead_code)]
         stream_key: String,
         rtc_server_id: String,
+        rtc_channel_id: String,
         #[allow(dead_code)]
         region: String,
         #[allow(dead_code)]

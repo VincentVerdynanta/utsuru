@@ -22,6 +22,7 @@ axum = { version = "0.8", optional = true }
 bytes = "1"
 clap = { version = "4.5", optional = true }
 clap_complete = { version = "4.5", optional = true }
+davey = "0.0.1-pre.6"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 http = "1"
 http-body = "1"

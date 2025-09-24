@@ -6,6 +6,7 @@ use tokio::{
     task::JoinHandle,
     time::sleep,
 };
+use tokio_websockets::Message as WebSocketMessage;
 
 use super::Notifier;
 use crate::error::{Error, ErrorType};
@@ -13,7 +14,7 @@ use crate::error::{Error, ErrorType};
 pub async fn handle(
     notify: &Arc<Notifier>,
     heartbeat_interval: u64,
-    egress_tx: &mpsc::UnboundedSender<String>,
+    egress_tx: &mpsc::UnboundedSender<WebSocketMessage>,
     mut nonce_rx: mpsc::UnboundedReceiver<u64>,
 ) -> Result<JoinHandle<Result<(), Error<dyn ErrorInner>>>, Error<dyn ErrorInner>> {
     const JS_MAX_INT: u64 = (1u64 << 53) - 1;
@@ -45,7 +46,7 @@ pub async fn handle(
                     "seq_ack": 1
                 }
             });
-            egress_tx.send(payload.to_string())?;
+            egress_tx.send(WebSocketMessage::text(payload.to_string()))?;
 
             let item;
             tokio::select! {
@@ -80,8 +81,8 @@ impl StdError for Error<dyn ErrorInner> {
     }
 }
 
-impl From<SendError<String>> for Error<dyn ErrorInner> {
-    fn from(err: SendError<String>) -> Self {
+impl From<SendError<WebSocketMessage>> for Error<dyn ErrorInner> {
+    fn from(err: SendError<WebSocketMessage>) -> Self {
         Self {
             kind: ErrorType::DiscordIPC,
             source: Some(Box::new(err)),

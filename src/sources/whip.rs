@@ -328,8 +328,8 @@ async fn init_peer(
                         if !is_emit {
                             s = SampleBuilder::new(OpusPacket, 15, 48000);
                         }
-                        while let Some(payload) = s.pop() {
-                            inner_track.write_audio_sample(&payload).await;
+                        while let Some(mut payload) = s.pop() {
+                            inner_track.write_audio_sample(&mut payload).await;
                         }
                     }
                 }
@@ -341,8 +341,8 @@ async fn init_peer(
                         if !is_emit {
                             s = SampleBuilder::new(H264Packet::default(), 30, 90000);
                         }
-                        while let Some(payload) = s.pop() {
-                            inner_track.write_video_sample(&payload).await;
+                        while let Some(mut payload) = s.pop() {
+                            inner_track.write_video_sample(&mut payload).await;
                         }
                     }
                 }
@@ -454,7 +454,7 @@ impl WHIPInner {
         *pos = None;
     }
 
-    async fn write_audio_sample(&self, payload: &Sample) {
+    async fn write_audio_sample(&self, payload: &mut Sample) {
         let mut map = self.map.write().await;
         let mut deque = self.mirrors.write().await;
 
@@ -473,7 +473,7 @@ impl WHIPInner {
         }
     }
 
-    async fn write_video_sample(&self, payload: &Sample) {
+    async fn write_video_sample(&self, payload: &mut Sample) {
         let mut map = self.map.write().await;
         let mut deque = self.mirrors.write().await;
 

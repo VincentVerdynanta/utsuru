@@ -42,7 +42,7 @@ use webrtc::{
     },
 };
 
-use super::Notifier;
+use super::{DAVEPayload, Notifier};
 use crate::error::{Error, ErrorType};
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -51,6 +51,7 @@ pub async fn handle(
     user_id: String,
     session_id: String,
     server: String,
+    channel: String,
     token: String,
     endpoint: String,
     audio_payload: u8,
@@ -58,7 +59,7 @@ pub async fn handle(
     video_payload: u8,
     video_codec: &'static str,
     video_rtxpayload: u8,
-    mut egress_rx: mpsc::UnboundedReceiver<String>,
+    mut egress_rx: mpsc::UnboundedReceiver<WebSocketMessage>,
     feed_tx: oneshot::Sender<(
         Arc<RTCPeerConnection>,
         Arc<RTCRtpSender>,
@@ -67,11 +68,12 @@ pub async fn handle(
     )>,
     nego_tx: Option<oneshot::Sender<()>>,
     connected_tx: Option<oneshot::Sender<()>>,
-    mut remote_tx: Option<oneshot::Sender<String>>,
+    mut remote_tx: Option<oneshot::Sender<(String, u16, tokio_websockets::Payload)>>,
     nonce_tx: mpsc::UnboundedSender<u64>,
     mut heartbeat_tx: Option<oneshot::Sender<u64>>,
+    dave_tx: &mpsc::UnboundedSender<DAVEPayload>,
 ) -> Result<JoinHandle<Result<(), Error<dyn ErrorInner>>>, Error<dyn ErrorInner>> {
-    let uri = format!("wss://{}/?v=8", endpoint);
+    let uri = format!("wss://{}/?v=9", endpoint);
     let tls = Arc::new(Connector::new()?);
     let (mut client, _) = ClientBuilder::new()
         .uri(&uri)
@@ -86,10 +88,11 @@ pub async fn handle(
         "op": 0,
         "d": {
             "server_id": server,
+            "channel_id": channel,
             "user_id": user_id,
             "session_id": session_id,
             "token": token,
-            "max_dave_protocol_version": 0,
+            "max_dave_protocol_version": 1,
             "video": true,
             "streams":[{
                 "type": "screen",
@@ -115,10 +118,12 @@ pub async fn handle(
     let mut feed = Some((feed_tx, peer_connection, audio_rtp_sender, video_rtp_sender));
 
     let notifier = notify.clone();
+    let dave_tx = dave_tx.clone();
     Ok(tokio::spawn(async move {
         let notify = notifier.endpoint.notified();
         let mut notify = Box::pin(notify);
 
+        let mut session = None;
         loop {
             let (ingress, egress);
             tokio::select! {
@@ -161,14 +166,22 @@ pub async fn handle(
                         _ => {}
                     }
                 };
+
+                debug!("[WS] got message from endpoint: {item:?}");
                 let Some(item) = item.as_text() else {
+                    let item = item.into_payload();
+                    if let Some((sdp, dave_protocol_version)) = session.take()
+                        && let Some(remote_tx) = remote_tx.take()
+                    {
+                        let _ = remote_tx.send((sdp, dave_protocol_version, item));
+                        continue;
+                    }
+                    let _ = dave_tx.send(DAVEPayload::Binary(item));
                     continue;
                 };
                 let Ok(EndpointPayload(item)) = from_str(item) else {
                     continue;
                 };
-
-                debug!("[WS] got message from endpoint: {item:?}");
 
                 match item {
                     EndpointEvent::OpCode2 { streams, .. } => {
@@ -187,10 +200,12 @@ pub async fn handle(
                             ));
                         }
                     }
-                    EndpointEvent::OpCode4 { sdp, .. } => {
-                        if let Some(remote_tx) = remote_tx.take() {
-                            let _ = remote_tx.send(sdp);
-                        }
+                    EndpointEvent::OpCode4 {
+                        sdp,
+                        dave_protocol_version,
+                        ..
+                    } => {
+                        session = Some((sdp, dave_protocol_version));
                     }
                     EndpointEvent::OpCode6 { t } => {
                         let _ = nonce_tx.send(t);
@@ -203,6 +218,28 @@ pub async fn handle(
                         }
                     }
                     EndpointEvent::OpCode9 {} => {}
+                    EndpointEvent::OpCode11 { user_ids } => {
+                        let _ = dave_tx.send(DAVEPayload::OpCode11(user_ids));
+                    }
+                    EndpointEvent::OpCode13 { user_id } => {
+                        let _ = dave_tx.send(DAVEPayload::OpCode13(user_id));
+                    }
+                    EndpointEvent::OpCode21 {
+                        transition_id,
+                        protocol_version,
+                    } => {
+                        let _ =
+                            dave_tx.send(DAVEPayload::OpCode21(transition_id, protocol_version));
+                    }
+                    EndpointEvent::OpCode22 { transition_id } => {
+                        let _ = dave_tx.send(DAVEPayload::OpCode22(transition_id));
+                    }
+                    EndpointEvent::OpCode24 {
+                        protocol_version,
+                        epoch,
+                    } => {
+                        let _ = dave_tx.send(DAVEPayload::OpCode24(protocol_version, epoch));
+                    }
                 }
             }
             if let Some(item) = egress {
@@ -210,8 +247,8 @@ pub async fn handle(
                     break;
                 };
 
-                debug!("[WS] message sent to endpoint: {}", payload);
-                if client.send(WebSocketMessage::text(payload)).await.is_err() {
+                debug!("[WS] message sent to endpoint: {:?}", payload);
+                if client.send(payload).await.is_err() {
                     break;
                 };
             }
@@ -427,6 +464,8 @@ enum EndpointEvent {
         #[allow(dead_code)]
         media_session_id: String,
         #[allow(dead_code)]
+        dave_protocol_version: u16,
+        #[allow(dead_code)]
         audio_codec: String,
     },
     #[serde(rename = "6")]
@@ -439,6 +478,19 @@ enum EndpointEvent {
     },
     #[serde(rename = "9")]
     OpCode9 {},
+    #[serde(rename = "11")]
+    OpCode11 { user_ids: Vec<String> },
+    #[serde(rename = "13")]
+    OpCode13 { user_id: String },
+    #[serde(rename = "21")]
+    OpCode21 {
+        transition_id: u16,
+        protocol_version: u16,
+    },
+    #[serde(rename = "22")]
+    OpCode22 { transition_id: u16 },
+    #[serde(rename = "24")]
+    OpCode24 { protocol_version: u16, epoch: u8 },
 }
 
 #[derive(Deserialize, Debug)]

@@ -1,3 +1,5 @@
+use bytes::Bytes;
+use davey::{Codec, DaveSession, MediaType};
 use serde_json::json;
 use std::{
     collections::HashSet,
@@ -19,6 +21,7 @@ use tokio::{
     },
     time::sleep,
 };
+use tokio_websockets::{Message as WebSocketMessage, Payload};
 use tracing::debug;
 use twilight_gateway::{Intents, Shard, ShardId};
 use twilight_model::id::{
@@ -36,10 +39,17 @@ use webrtc::{
 
 use super::Mirror;
 use crate::error::{Error, ErrorType};
+use crate::utils::{h264_parser::parse_sps, h264_synthesizer::synthesize_sps};
 
+mod dave;
 mod endpoint;
 mod gateway;
 mod heartbeat;
+
+const NALU_SHORT_START_SEQUENCE_SIZE: usize = 3;
+const START_CODE_HIGHEST_POSSIBLE_VALUE: u8 = 1;
+const START_CODE_END_BYTE_VALUE: u8 = 1;
+const START_CODE_LEADING_BYTES_VALUE: u8 = 0;
 
 pub struct DiscordLiveBuilder {
     token: Box<str>,
@@ -83,8 +93,11 @@ impl DiscordLiveBuilder {
         let remote_tx = Some(remote_tx);
         let (heartbeat_tx, heartbeat_rx) = oneshot::channel();
         let heartbeat_tx = Some(heartbeat_tx);
+        let (instance_tx, instance_rx) = oneshot::channel();
+        let instance_tx = Some(instance_tx);
         let (egress_tx, egress_rx) = mpsc::unbounded_channel();
         let (nonce_tx, nonce_rx) = mpsc::unbounded_channel();
+        let (dave_tx, dave_rx) = mpsc::unbounded_channel();
 
         let audio_payload = 111;
         let audio_codec = "opus";
@@ -115,16 +128,18 @@ impl DiscordLiveBuilder {
         trace_tx
             .as_ref()
             .map(|tx| tx.send(DiscordLiveBuilderState::StreamCreating));
-        let server = rtcsrv_rx.await?;
+        let (server, channel) = rtcsrv_rx.await?;
+        let channel_id: Result<u64, _> = channel.parse();
         trace_tx
             .as_ref()
             .map(|tx| tx.send(DiscordLiveBuilderState::EndpointWSConnecting));
         let (token, endpoint) = wsconn_rx.await?;
         if let Err(e) = endpoint::handle(
             &notify,
-            user_id,
+            user_id.to_string(),
             session_id,
             server,
+            channel,
             token,
             endpoint,
             audio_payload,
@@ -139,6 +154,7 @@ impl DiscordLiveBuilder {
             remote_tx,
             nonce_tx,
             heartbeat_tx,
+            &dave_tx,
         )
         .await
         {
@@ -167,6 +183,13 @@ impl DiscordLiveBuilder {
             .as_ref()
             .map(|tx| tx.send(DiscordLiveBuilderState::EndpointRTCNegotiation));
         nego_rx.await?;
+        if let Err(e) = dave::handle(&notify, &egress_tx, dave_rx, instance_tx).await {
+            notify.close();
+            return Err(Error {
+                kind: e.kind,
+                source: e.source.map(|source| source as Box<dyn ErrorInner>),
+            });
+        }
 
         let offer = peer_connection.create_offer(None).await?;
         let mut gather_complete = peer_connection.gathering_complete_promise().await;
@@ -281,13 +304,13 @@ impl DiscordLiveBuilder {
                 "rtc_connection_id": Uuid::new_v4().to_string()
             }
         });
-        egress_tx.send(payload.to_string())?;
+        egress_tx.send(WebSocketMessage::text(payload.to_string()))?;
         debug!("[WebRTC] offer sent, waiting for answer");
 
         trace_tx
             .as_ref()
             .map(|tx| tx.send(DiscordLiveBuilderState::EndpointWSSDP));
-        let remote_sdp = remote_rx.await?;
+        let (remote_sdp, dave_protocol_version, external_payload) = remote_rx.await?;
 
         let mut answer = RTCSessionDescription::default();
         answer.sdp_type = RTCSdpType::Answer;
@@ -378,8 +401,20 @@ impl DiscordLiveBuilder {
             ))
             .await?;
 
-        let local_audio_track = Arc::new(RwLock::new(local_audio_track));
-        let local_video_track = Arc::new(RwLock::new(local_video_track));
+        let user_id = user_id.get();
+        let channel_id = channel_id?;
+        dave_tx.send(DAVEPayload::OpCode4(
+            dave_protocol_version,
+            user_id,
+            channel_id,
+            local_audio_track,
+            local_video_track,
+        ))?;
+        dave_tx.send(DAVEPayload::Binary(external_payload))?;
+        trace_tx
+            .as_ref()
+            .map(|tx| tx.send(DiscordLiveBuilderState::EndpointDAVECreating));
+        let dave_instance = instance_rx.await?;
 
         let payload = json!({
             "op": 5,
@@ -389,7 +424,7 @@ impl DiscordLiveBuilder {
                 "ssrc": 0
             }
         });
-        egress_tx.send(payload.to_string())?;
+        egress_tx.send(WebSocketMessage::text(payload.to_string()))?;
 
         let payload = json!({
             "op": 12,
@@ -439,10 +474,9 @@ impl DiscordLiveBuilder {
             }
         });
         let inactive = payload.to_string();
-        egress_tx.send(inactive)?;
+        egress_tx.send(WebSocketMessage::text(inactive))?;
 
-        let audio_lock = local_audio_track.clone();
-        let video_lock = local_video_track.clone();
+        let instance_lock = dave_instance.clone();
         tokio::spawn(async move {
             loop {
                 sleep(Duration::from_secs(300)).await;
@@ -471,7 +505,10 @@ impl DiscordLiveBuilder {
                     break;
                 };
                 {
-                    *audio_lock.write().await = local_audio_track;
+                    instance_lock
+                        .write()
+                        .await
+                        .replace_audio_track(local_audio_track);
                 }
 
                 let local_video_track = Arc::new(TrackLocalStaticSample::new(
@@ -491,7 +528,10 @@ impl DiscordLiveBuilder {
                     break;
                 };
                 {
-                    *video_lock.write().await = local_video_track;
+                    instance_lock
+                        .write()
+                        .await
+                        .replace_video_track(local_video_track);
                 }
 
                 let Ok(_) = peer_connection
@@ -506,8 +546,7 @@ impl DiscordLiveBuilder {
         Ok(DiscordLive {
             notify,
             active,
-            local_audio_track,
-            local_video_track,
+            dave_instance,
             egress_tx,
         })
     }
@@ -516,15 +555,14 @@ impl DiscordLiveBuilder {
 pub struct DiscordLive {
     notify: Arc<Notifier>,
     active: String,
-    local_audio_track: Arc<RwLock<Arc<TrackLocalStaticSample>>>,
-    local_video_track: Arc<RwLock<Arc<TrackLocalStaticSample>>>,
-    egress_tx: mpsc::UnboundedSender<String>,
+    dave_instance: Arc<RwLock<DAVEInstance>>,
+    egress_tx: mpsc::UnboundedSender<WebSocketMessage>,
 }
 
 impl Mirror for DiscordLive {
     fn write_audio_sample<'a>(
         &'a self,
-        payload: &'a Sample,
+        payload: &'a mut Sample,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>> {
         Box::pin(async {
             if self.notify.is_closed() {
@@ -533,10 +571,10 @@ impl Mirror for DiscordLive {
                     source: None,
                 });
             }
-            self.local_audio_track
-                .read()
+            self.dave_instance
+                .write()
                 .await
-                .write_sample(payload)
+                .write_audio_sample(payload)
                 .await
                 .map_err(|err| Error {
                     kind: ErrorType::DiscordEndpoint,
@@ -547,7 +585,7 @@ impl Mirror for DiscordLive {
 
     fn write_video_sample<'a>(
         &'a self,
-        payload: &'a Sample,
+        payload: &'a mut Sample,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>> {
         Box::pin(async {
             if self.notify.is_closed() {
@@ -556,10 +594,10 @@ impl Mirror for DiscordLive {
                     source: None,
                 });
             }
-            self.local_video_track
-                .read()
+            self.dave_instance
+                .write()
                 .await
-                .write_sample(payload)
+                .write_video_sample(payload)
                 .await
                 .map_err(|err| Error {
                     kind: ErrorType::DiscordEndpoint,
@@ -576,7 +614,7 @@ impl Mirror for DiscordLive {
             });
         }
         self.egress_tx
-            .send(self.active.clone())
+            .send(WebSocketMessage::text(self.active.clone()))
             .map_err(|err| Error {
                 kind: ErrorType::DiscordEndpoint,
                 source: Some(err.into()),
@@ -588,11 +626,135 @@ impl Mirror for DiscordLive {
     }
 }
 
+struct DAVEInstance {
+    session: DaveSession,
+    dave_protocol_version: u16,
+    local_audio_track: Arc<TrackLocalStaticSample>,
+    local_video_track: Arc<TrackLocalStaticSample>,
+}
+
+impl DAVEInstance {
+    fn get_session(&mut self) -> &mut DaveSession {
+        &mut self.session
+    }
+
+    fn set_dave_protocol_version(&mut self, version: u16) -> u16 {
+        self.dave_protocol_version = version;
+        self.dave_protocol_version
+    }
+
+    fn replace_audio_track(&mut self, track: Arc<TrackLocalStaticSample>) {
+        self.local_audio_track = track;
+    }
+
+    fn replace_video_track(&mut self, track: Arc<TrackLocalStaticSample>) {
+        self.local_video_track = track;
+    }
+
+    async fn write_audio_sample(&mut self, payload: &mut Sample) -> Result<(), webrtc::Error> {
+        if self.dave_protocol_version == 0 || !self.session.is_ready() {
+            return self.local_audio_track.write_sample(payload).await;
+        }
+
+        let Ok(data) = self
+            .session
+            .encrypt(MediaType::AUDIO, Codec::OPUS, &payload.data)
+        else {
+            return self.local_audio_track.write_sample(payload).await;
+        };
+        payload.data = Bytes::copy_from_slice(&data);
+
+        self.local_audio_track.write_sample(payload).await
+    }
+
+    async fn write_video_sample(&mut self, payload: &mut Sample) -> Result<(), webrtc::Error> {
+        if self.dave_protocol_version == 0 || !self.session.is_ready() {
+            return self.local_video_track.write_sample(payload).await;
+        }
+
+        let mut data = Vec::new();
+        let mut nalu_indexes = Vec::new();
+        let mut i = 0;
+        while i < (payload.data.len() - NALU_SHORT_START_SEQUENCE_SIZE) {
+            if payload.data[i + 2] > START_CODE_HIGHEST_POSSIBLE_VALUE {
+                i += NALU_SHORT_START_SEQUENCE_SIZE;
+            } else if payload.data[i + 1] != START_CODE_LEADING_BYTES_VALUE {
+                i += 2;
+            } else if payload.data[i] != START_CODE_LEADING_BYTES_VALUE
+                || payload.data[i + 2] != START_CODE_END_BYTE_VALUE
+            {
+                i += 1;
+            } else {
+                if i >= 1 && payload.data[i - 1] == START_CODE_LEADING_BYTES_VALUE {
+                    nalu_indexes.push((i - 1, 4));
+                } else {
+                    nalu_indexes.push((i, 3));
+                }
+                i += NALU_SHORT_START_SEQUENCE_SIZE;
+            }
+        }
+
+        for pos in 0..nalu_indexes.len() {
+            let (nalu, start_size) = nalu_indexes[pos];
+            let next_nalu = nalu_indexes
+                .get(pos + 1)
+                .map(|v| v.0)
+                .unwrap_or(payload.data.len());
+            match payload.data[nalu + start_size] & 0x1F {
+                1 | 5 | 8 => {
+                    data.extend_from_slice(&payload.data[nalu..next_nalu]);
+                }
+                7 => {
+                    let (mut sps, _) =
+                        parse_sps(&payload.data[(nalu + start_size + 1)..next_nalu]).unwrap();
+                    if !sps.vui_parameters.bitstream_restriction_flag {
+                        sps.vui_parameters.bitstream_restriction_flag = true;
+                        sps.vui_parameters.motion_vectors_over_pic_boundaries_flag = true;
+                        sps.vui_parameters.max_bytes_per_pic_denom = 2;
+                        sps.vui_parameters.max_bits_per_mb_denom = 1;
+                        sps.vui_parameters.log2_max_mv_length_horizontal = 16;
+                        sps.vui_parameters.log2_max_mv_length_vertical = 16;
+                        sps.vui_parameters.max_num_reorder_frames = 0;
+                        sps.vui_parameters.max_dec_frame_buffering = sps.max_num_ref_frames as u32;
+                    }
+                    data.extend_from_slice(&payload.data[nalu..][..(start_size + 1)]);
+                    synthesize_sps(&sps, &mut data, false).unwrap();
+                }
+                _ => {}
+            }
+        }
+
+        let Ok(data) = self.session.encrypt(MediaType::VIDEO, Codec::H264, &data) else {
+            return self.local_video_track.write_sample(payload).await;
+        };
+        payload.data = Bytes::copy_from_slice(&data);
+
+        self.local_video_track.write_sample(payload).await
+    }
+}
+
+enum DAVEPayload {
+    Binary(Payload),
+    OpCode4(
+        u16,
+        u64,
+        u64,
+        Arc<TrackLocalStaticSample>,
+        Arc<TrackLocalStaticSample>,
+    ),
+    OpCode11(Vec<String>),
+    OpCode13(String),
+    OpCode21(u16, u16),
+    OpCode22(u16),
+    OpCode24(u16, u8),
+}
+
 pub(super) struct Notifier {
     is_closed: AtomicBool,
     gateway: Arc<Notify>,
     endpoint: Arc<Notify>,
     heartbeat: Arc<Notify>,
+    dave: Arc<Notify>,
 }
 
 impl Notifier {
@@ -602,6 +764,7 @@ impl Notifier {
             gateway: Arc::new(Notify::new()),
             endpoint: Arc::new(Notify::new()),
             heartbeat: Arc::new(Notify::new()),
+            dave: Arc::new(Notify::new()),
         }
     }
 
@@ -609,6 +772,7 @@ impl Notifier {
         self.gateway.notify_one();
         self.endpoint.notify_one();
         self.heartbeat.notify_one();
+        self.dave.notify_one();
         self.is_closed.store(true, Ordering::Relaxed);
     }
 
@@ -625,6 +789,7 @@ pub enum DiscordLiveBuilderState {
     EndpointRTCCreating,
     EndpointRTCNegotiation,
     EndpointRTCConnecting,
+    EndpointDAVECreating,
 }
 
 impl Display for DiscordLiveBuilderState {
@@ -646,6 +811,9 @@ impl Display for DiscordLiveBuilderState {
             }
             DiscordLiveBuilderState::EndpointRTCConnecting => {
                 f.write_str("rtc client currently connecting to live stream endpoint")
+            }
+            DiscordLiveBuilderState::EndpointDAVECreating => {
+                f.write_str("creating new dave session")
             }
         }
     }
@@ -690,8 +858,17 @@ impl From<ParseIntError> for Error<dyn ErrorInner> {
     }
 }
 
-impl From<SendError<String>> for Error<dyn ErrorInner> {
-    fn from(err: SendError<String>) -> Self {
+impl From<SendError<DAVEPayload>> for Error<dyn ErrorInner> {
+    fn from(err: SendError<DAVEPayload>) -> Self {
+        Self {
+            kind: ErrorType::DiscordIPC,
+            source: Some(Box::new(err)),
+        }
+    }
+}
+
+impl From<SendError<WebSocketMessage>> for Error<dyn ErrorInner> {
+    fn from(err: SendError<WebSocketMessage>) -> Self {
         Self {
             kind: ErrorType::DiscordIPC,
             source: Some(Box::new(err)),
