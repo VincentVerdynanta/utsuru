@@ -20,7 +20,7 @@ Once the utsuru executable is installed on your system, open a terminal and run:
 
 Upon execution, it will print a Web UI URL to the terminal. Open this URL in a browser to access the utsuru Web UI.
 
-[terminal-image]: https://github.com/user-attachments/assets/da835365-36d1-48aa-9306-c2803122ef33
+[terminal-image]: https://github.com/user-attachments/assets/4bbbd3b4-64f1-40c9-a881-52b727089219
 
 ## Configuring OBS Output Settings
 
@@ -41,7 +41,7 @@ Once you have OBS open, go to the **Settings** menu and navigate to the **Output
 
 These settings are designed to achieve the optimal balance between quality and performance during streaming, but you can adjust them based on your own preferences or network conditions.
 
-[output-settings-image]: https://github.com/user-attachments/assets/29922382-b58a-400f-ad71-5577859469a8
+[output-settings-image]: https://github.com/user-attachments/assets/facf4fa5-48b0-49f9-a949-4bf19972a6e0
 
 ## Configuring OBS Video Settings
 
@@ -60,7 +60,7 @@ Next, go to the **Video** tab in OBS settings. Here,
 
 These settings help maintain a stable and smooth stream without overwhelming your system resources.
 
-[video-settings-image]: https://github.com/user-attachments/assets/20e4295c-9c36-4276-a46a-287c2c5aa662
+[video-settings-image]: https://github.com/user-attachments/assets/82da1954-9c9f-4f93-b8d4-e9a18d1e0503
 
 ## Setting up OBS for Streaming
 
@@ -74,7 +74,7 @@ These settings help maintain a stable and smooth stream without overwhelming you
 
 Now, head to the **Stream** tab in OBS settings. Set the **Service** to WHIP. This will allow OBS to connect to the utsuru service for streaming.
 
-[stream-settings-image]: https://github.com/user-attachments/assets/441b27ac-edae-4895-913e-6eb547f431fe
+[stream-settings-image]: https://github.com/user-attachments/assets/10916656-4ed6-4f95-a6d6-e2b0a416fda2
 
 ## Connecting OBS to utsuru
 
@@ -90,7 +90,7 @@ Once you’ve adjusted the **Service**, go back to the utsuru Web UI. The interf
 
 At this point, OBS will prompt you with a message stating that changing the Service to WHIP will change the audio encoder to Opus. Click **Yes** to continue. After confirming, apply the changes and close the settings window. You are now ready to start streaming!
 
-[webui-image]: https://github.com/user-attachments/assets/033d631c-4d14-41a3-8020-0532e52dd248
+[webui-image]: https://github.com/user-attachments/assets/4947517a-3c39-48dc-a108-eba3d9b25785
 
 ## Setting up Discord Live Mirror
 
@@ -104,7 +104,7 @@ At this point, OBS will prompt you with a message stating that changing the Serv
 
 Once OBS is streaming, return to the utsuru Web UI. Under the **Mirrors** section, click the **+** button at the top to create a new Discord Live connection. A popup form will appear, prompting you for your Discord token, guild ID, and voice channel ID.
 
-[add-mirror-image]: https://github.com/user-attachments/assets/9b89a41a-bcef-4dc9-8879-b9d25ab89a55
+[add-mirror-image]: https://github.com/user-attachments/assets/ba072722-7c5e-4d2f-bb4e-c97d8f86f4d5
 
 ## Retrieving Discord Token
 
@@ -123,7 +123,7 @@ Once OBS is streaming, return to the utsuru Web UI. Under the **Mirrors** sectio
 
 To proceed, you will need your Discord token. Open Discord and locate your token. If you're unfamiliar with this process, you may need to search online (using Google or YouTube) for guidance on retrieving your Discord token. Once you have your token, copy it and return to the utsuru Web UI. Paste the token into the first input field in the popup form.
 
-[discord-devtools-image]: https://github.com/user-attachments/assets/e39511d2-2b86-41a8-8cc2-2d1f5c315fcb
+[discord-devtools-image]: https://github.com/user-attachments/assets/36e0f431-462b-44cd-bb03-7b2817b56024
 
 ## Retrieving Discord Guild ID and Voice Channel ID
 
@@ -151,7 +151,7 @@ The **GUILD\_ID** would be `41771983423143937`.
 
 Next, copy the **CHANNEL\_ID** (the second numbers in the link) and paste it into the third input field. For example, from the same link, the **CHANNEL\_ID** would be `127121515262115840`.
 
-[discord-vc-image]: https://github.com/user-attachments/assets/3ed84a9b-2b59-4c2a-9242-e8961214883b
+[discord-vc-image]: https://github.com/user-attachments/assets/6c4247d0-0f7b-41d7-a3de-d2f9e4b07940
 
 ## Finalizing the Discord Live Mirror
 
@@ -167,4 +167,4 @@ Once you've entered the Discord **token**, **guild ID**, and **voice channel ID*
 
 You have now successfully connected utsuru to your Discord voice channel and can begin streaming to it.
 
-[mirror-entry-image]: https://github.com/user-attachments/assets/02114e98-66bf-4582-971f-6ba957cfb5fe
+[mirror-entry-image]: https://github.com/user-attachments/assets/cd5cfb1a-cc45-478f-84d4-619a04414bd0
