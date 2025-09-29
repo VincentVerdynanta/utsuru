@@ -322,7 +322,7 @@ fn reinit_dave_session(
                 let session = dave_instance.get_session();
                 let Some(version) = NonZeroU16::new(dave_protocol_version) else {
                     return Err(Error {
-                        kind: ErrorType::DiscordIPC,
+                        kind: ErrorType::DiscordDAVE,
                         source: None,
                     });
                 };
@@ -332,7 +332,7 @@ fn reinit_dave_session(
             _ => {
                 let Some(version) = NonZeroU16::new(dave_protocol_version) else {
                     return Err(Error {
-                        kind: ErrorType::DiscordIPC,
+                        kind: ErrorType::DiscordDAVE,
                         source: None,
                     });
                 };
