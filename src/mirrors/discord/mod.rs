@@ -72,11 +72,28 @@ impl DiscordLiveBuilder {
     ) -> Result<DiscordLive, Error<dyn ErrorInner>> {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
-        let token = String::from(self.token.as_ref());
+        if self.token.len() < 4 {
+            return Err(Error {
+                kind: ErrorType::DiscordAuth,
+                source: None,
+            });
+        }
+
+        let mut token = String::from(self.token.as_ref());
+        token.replace_range(0..4, "Bot ");
+        let token_ptr: *mut u8 = token.as_mut_ptr();
 
         let intents =
             Intents::GUILD_MESSAGES | Intents::GUILD_VOICE_STATES | Intents::MESSAGE_CONTENT;
         let shard = Shard::new(ShardId::ONE, token, intents);
+
+        let src = self.token.as_bytes();
+        unsafe {
+            *token_ptr = src[0];
+            *token_ptr.add(1) = src[1];
+            *token_ptr.add(2) = src[2];
+            *token_ptr.add(3) = src[3];
+        }
 
         let (voice_tx, voice_rx) = oneshot::channel();
         let voice_tx = Some(voice_tx);
