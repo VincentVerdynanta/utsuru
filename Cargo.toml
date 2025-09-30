@@ -1,6 +1,6 @@
 [package]
 name = "utsuru"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Vincent Verdynanta <connect@vincent.id>"]
 edition = "2024"
 description = "A WebRTC utility for forwarding track packets from a single source to multiple mirrors."
