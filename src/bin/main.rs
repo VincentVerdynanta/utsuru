@@ -14,7 +14,7 @@ use clap_complete::aot::{Generator, Shell, generate};
 use futures_util::stream::unfold;
 use serde::Deserialize;
 use std::net::{IpAddr, SocketAddr};
-use tokio::{net::TcpListener, sync::mpsc};
+use tokio::{fs, net::TcpListener, sync::mpsc};
 use tower::service_fn;
 use utsuru::{mirrors::DiscordLiveBuilder, sources::WHIP};
 
@@ -87,6 +87,15 @@ async fn start() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let whip = WHIP::new(addr.ip());
+
+    let mirror_entries = load_mirrors_from_toml().await;
+    for entry in mirror_entries {
+        let builder = DiscordLiveBuilder::new(entry.token, entry.guild_id, entry.channel_id);
+        if let Ok(mirror) = builder.connect(None).await {
+            let _ = whip.add_mirror(mirror).await;
+        }
+    }
+
     let whip_service = service_fn(whip.into_closure());
 
     let app = Router::new()
@@ -195,6 +204,18 @@ struct DeletePayload {
     id: usize,
 }
 
+#[derive(Deserialize)]
+struct MirrorsConfig {
+    mirrors: Vec<MirrorEntry>,
+}
+
+#[derive(Deserialize)]
+struct MirrorEntry {
+    token: String,
+    guild_id: u64,
+    channel_id: u64,
+}
+
 async fn create_mirror(whip: WHIP, payload: CreatePayload) -> Result<Response, StatusCode> {
     let (trace_tx, trace_rx) = mpsc::unbounded_channel();
     let client = DiscordLiveBuilder::new(payload.token, payload.guild_id, payload.channel_id)
@@ -238,6 +259,18 @@ async fn delete_mirror(whip: WHIP, payload: DeletePayload) -> Result<Response, S
     };
 
     Ok(().into_response())
+}
+
+async fn load_mirrors_from_toml() -> Vec<MirrorEntry> {
+    let content = match fs::read_to_string("mirrors.toml").await {
+        Ok(content) => content,
+        Err(_) => return Vec::new(),
+    };
+
+    match toml::from_str::<MirrorsConfig>(&content) {
+        Ok(config) => config.mirrors,
+        Err(_) => Vec::new(),
+    }
 }
 
 fn build_cli() -> Command {

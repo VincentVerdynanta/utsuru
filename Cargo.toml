@@ -29,8 +29,9 @@ http-body = "1"
 http-body-util = "0.1"
 rand = "0.9"
 rustls = { version = "0.23.32", default-features = false, features = ["ring", "tls12"] }
-serde = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
+toml = { version = "0.9", optional = true }
 tokio = { version = "1.47", features = ["macros", "rt-multi-thread", "io-util"] }
 tokio-websockets = { version = "0.12", features = ["client", "fastrand", "ring", "rustls-platform-verifier", "sha1_smol"] }
 tower = { version = "0.5", optional = true }
@@ -43,7 +44,7 @@ webrtc = "0.14"
 
 [features]
 default = ["cli"]
-cli = ["axum", "clap", "clap_complete", "tower", "tracing-subscriber"]
+cli = ["axum", "clap", "clap_complete", "tower", "toml", "tracing-subscriber"]
 
 [profile.release]
 codegen-units = 1
