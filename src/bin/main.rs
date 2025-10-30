@@ -13,7 +13,10 @@ use clap::{Arg, ArgAction, Command, value_parser};
 use clap_complete::aot::{Generator, Shell, generate};
 use futures_util::stream::unfold;
 use serde::Deserialize;
-use std::net::{IpAddr, SocketAddr};
+use std::{
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+};
 use tokio::{fs, net::TcpListener, sync::mpsc};
 use tower::service_fn;
 use utsuru::{mirrors::DiscordLiveBuilder, sources::WHIP};
@@ -101,7 +104,7 @@ async fn start() -> Result<(), Box<dyn std::error::Error>> {
 
     let whip = WHIP::new(addr.ip());
 
-    let config_path: &String = matches.get_one("config").unwrap();
+    let config_path: &PathBuf = matches.get_one("config").unwrap();
     if let Ok(content) = fs::read_to_string(config_path).await {
         let config: Config = toml::from_str(&content).unwrap_or_default();
         for mirror in config.mirrors {
@@ -297,7 +300,7 @@ fn build_cli() -> Command {
             Arg::new("config")
                 .short('c')
                 .long("config")
-                .value_parser(value_parser!(String))
+                .value_parser(value_parser!(PathBuf))
                 .default_value("config.toml")
                 .help("Configuration file path"),
         )
