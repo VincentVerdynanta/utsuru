@@ -13,8 +13,11 @@ use clap::{Arg, ArgAction, Command, value_parser};
 use clap_complete::aot::{Generator, Shell, generate};
 use futures_util::stream::unfold;
 use serde::Deserialize;
-use std::net::{IpAddr, SocketAddr};
-use tokio::{net::TcpListener, sync::mpsc};
+use std::{
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+};
+use tokio::{fs, net::TcpListener, sync::mpsc};
 use tower::service_fn;
 use utsuru::{mirrors::DiscordLiveBuilder, sources::WHIP};
 
@@ -29,6 +32,19 @@ pub fn main() {
     if let Some(err) = result.err() {
         println!("Error: {err}");
     }
+}
+
+#[derive(Deserialize, Default)]
+struct Config {
+    #[serde(default)]
+    mirrors: Vec<Mirror>,
+}
+
+#[derive(Deserialize)]
+struct Mirror {
+    token: String,
+    guild_id: u64,
+    channel_id: u64,
 }
 
 #[tokio::main]
@@ -87,6 +103,18 @@ async fn start() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let whip = WHIP::new(addr.ip());
+
+    let config_path: &PathBuf = matches.get_one("config").unwrap();
+    if let Ok(content) = fs::read_to_string(config_path).await {
+        let config: Config = toml::from_str(&content).unwrap_or_default();
+        for mirror in config.mirrors {
+            let builder = DiscordLiveBuilder::new(mirror.token, mirror.guild_id, mirror.channel_id);
+            if let Ok(mirror) = builder.connect(None).await {
+                let _ = whip.add_mirror(mirror).await;
+            }
+        }
+    }
+
     let whip_service = service_fn(whip.into_closure());
 
     let app = Router::new()
@@ -267,6 +295,14 @@ fn build_cli() -> Command {
                 .value_parser(value_parser!(tracing::level_filters::LevelFilter))
                 .default_value("off")
                 .help("Log verbosity"),
+        )
+        .arg(
+            Arg::new("config")
+                .short('c')
+                .long("config")
+                .value_parser(value_parser!(PathBuf))
+                .default_value("config.toml")
+                .help("Configuration file path"),
         )
         .arg(
             Arg::new("completions")
