@@ -73,9 +73,26 @@ Options:
   -h, --host <host>                Specify bind address [default: 127.0.0.1]
   -p, --port <port>                Specify port to listen on [default: 3000]
   -v, --verbosity <verbosity>      Log verbosity [default: off]
+  -c, --config <config>            Configuration file path [default: config.toml]
       --completions <completions>  Print shell completion script for <shell> [possible values: bash, elvish, fish, powershell, zsh]
       --help                       Print help
   -V, --version                    Print version
+```
+
+### Configuration file
+
+The optional config file allows for mirrors to persist through restarts. The default path for the config file is `workdir/config.toml`.
+
+```toml
+[[mirrors]]
+token = "your_discord_token"
+guild_id = 123456789012345678
+channel_id = 987654321098765432
+
+[[mirrors]]
+token = "another_discord_token"
+guild_id = 111111111111111111
+channel_id = 222222222222222222
 ```
 
 ## Getting started

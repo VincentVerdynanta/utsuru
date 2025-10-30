@@ -31,6 +31,19 @@ pub fn main() {
     }
 }
 
+#[derive(Deserialize, Default)]
+struct Config {
+    #[serde(default)]
+    mirrors: Vec<Mirror>,
+}
+
+#[derive(Deserialize)]
+struct Mirror {
+    token: String,
+    guild_id: u64,
+    channel_id: u64,
+}
+
 #[tokio::main]
 async fn start() -> Result<(), Box<dyn std::error::Error>> {
     let matches = build_cli().get_matches();
@@ -88,11 +101,14 @@ async fn start() -> Result<(), Box<dyn std::error::Error>> {
 
     let whip = WHIP::new(addr.ip());
 
-    let mirror_entries = load_mirrors_from_toml().await;
-    for entry in mirror_entries {
-        let builder = DiscordLiveBuilder::new(entry.token, entry.guild_id, entry.channel_id);
-        if let Ok(mirror) = builder.connect(None).await {
-            let _ = whip.add_mirror(mirror).await;
+    let config_path: &String = matches.get_one("config").unwrap();
+    if let Ok(content) = fs::read_to_string(config_path).await {
+        let config: Config = toml::from_str(&content).unwrap_or_default();
+        for mirror in config.mirrors {
+            let builder = DiscordLiveBuilder::new(mirror.token, mirror.guild_id, mirror.channel_id);
+            if let Ok(mirror) = builder.connect(None).await {
+                let _ = whip.add_mirror(mirror).await;
+            }
         }
     }
 
@@ -204,18 +220,6 @@ struct DeletePayload {
     id: usize,
 }
 
-#[derive(Deserialize)]
-struct MirrorsConfig {
-    mirrors: Vec<MirrorEntry>,
-}
-
-#[derive(Deserialize)]
-struct MirrorEntry {
-    token: String,
-    guild_id: u64,
-    channel_id: u64,
-}
-
 async fn create_mirror(whip: WHIP, payload: CreatePayload) -> Result<Response, StatusCode> {
     let (trace_tx, trace_rx) = mpsc::unbounded_channel();
     let client = DiscordLiveBuilder::new(payload.token, payload.guild_id, payload.channel_id)
@@ -261,18 +265,6 @@ async fn delete_mirror(whip: WHIP, payload: DeletePayload) -> Result<Response, S
     Ok(().into_response())
 }
 
-async fn load_mirrors_from_toml() -> Vec<MirrorEntry> {
-    let content = match fs::read_to_string("mirrors.toml").await {
-        Ok(content) => content,
-        Err(_) => return Vec::new(),
-    };
-
-    match toml::from_str::<MirrorsConfig>(&content) {
-        Ok(config) => config.mirrors,
-        Err(_) => Vec::new(),
-    }
-}
-
 fn build_cli() -> Command {
     Command::new(env!("CARGO_CRATE_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
@@ -300,6 +292,14 @@ fn build_cli() -> Command {
                 .value_parser(value_parser!(tracing::level_filters::LevelFilter))
                 .default_value("off")
                 .help("Log verbosity"),
+        )
+        .arg(
+            Arg::new("config")
+                .short('c')
+                .long("config")
+                .value_parser(value_parser!(String))
+                .default_value("config.toml")
+                .help("Configuration file path"),
         )
         .arg(
             Arg::new("completions")
